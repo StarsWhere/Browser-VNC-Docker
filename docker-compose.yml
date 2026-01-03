@@ -1,0 +1,17 @@
+services:
+  browser-vnc:
+    build: .
+    container_name: browser-vnc
+    restart: unless-stopped
+    environment:
+      - VNC_PASSWORD=${VNC_PASSWORD:?set vnc password}
+      - TZ=${TZ:-Asia/Shanghai}
+      - LANG=${LANG:-en_US.UTF-8}
+      - LC_ALL=${LC_ALL:-en_US.UTF-8}
+      - NOVNC_PORT=${NOVNC_PORT:-6080}
+      - ADMIN_PORT=${ADMIN_PORT:-8080}
+    ports:
+      - "${NOVNC_PORT:-6080}:6080"
+      - "${ADMIN_PORT:-8080}:8080"
+    volumes:
+      - ./data:/data

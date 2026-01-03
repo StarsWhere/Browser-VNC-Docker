@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>多账户浏览器管理</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-4">
+  <h1 class="h3 mb-4">多账户浏览器管理</h1>
+
+  <div class="card mb-4">
+    <div class="card-header">新增 / 编辑账号</div>
+    <div class="card-body">
+      <form id="account-form" class="row g-3">
+        <input type="hidden" id="account-id">
+        <div class="col-md-4">
+          <label class="form-label">名称 *</label>
+          <input class="form-control" id="name" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">默认 URL</label>
+          <input class="form-control" id="default_url" placeholder="https://...">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="autostart">
+            <label class="form-check-label" for="autostart">容器启动自动开启</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">备注</label>
+          <textarea class="form-control" id="notes" rows="2"></textarea>
+        </div>
+        <div class="col-12"><strong>HTTP 代理</strong></div>
+        <div class="col-md-4">
+          <input class="form-control" id="http_host" placeholder="host">
+        </div>
+        <div class="col-md-2">
+          <input class="form-control" id="http_port" type="number" placeholder="port">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" id="http_username" placeholder="用户名 (可选)">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" id="http_password" placeholder="密码 (可选)">
+        </div>
+
+        <div class="col-12"><strong>HTTPS 代理</strong> <small class="text-muted">(为空时复用 HTTP)</small></div>
+        <div class="col-md-4">
+          <input class="form-control" id="https_host" placeholder="host">
+        </div>
+        <div class="col-md-2">
+          <input class="form-control" id="https_port" type="number" placeholder="port">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" id="https_username" placeholder="用户名 (可选)">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" id="https_password" placeholder="密码 (可选)">
+        </div>
+
+        <div class="col-12"><strong>SOCKS5 代理</strong></div>
+        <div class="col-md-4">
+          <input class="form-control" id="socks_host" placeholder="host">
+        </div>
+        <div class="col-md-2">
+          <input class="form-control" id="socks_port" type="number" placeholder="port">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" id="socks_username" placeholder="用户名 (可选)">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" id="socks_password" placeholder="密码 (可选)">
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-primary" type="submit" id="submit-btn">保存账号</button>
+          <button class="btn btn-secondary" type="button" id="reset-btn">重置表单</button>
+          <div id="form-status" class="ms-3 text-danger small"></div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>账号列表</span>
+      <button class="btn btn-sm btn-outline-primary" id="refresh-btn">刷新</button>
+    </div>
+    <div class="card-body table-responsive">
+      <table class="table table-sm align-middle" id="accounts-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>名称</th>
+            <th>代理摘要</th>
+            <th>默认URL</th>
+            <th>自动启动</th>
+            <th>运行中</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="load-status" class="text-muted small"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let editingId = null;
+
+function proxySummary(proxy) {
+  if (!proxy || Object.keys(proxy).length === 0) return "直连";
+  const parts = [];
+  for (const key of ["http", "https", "socks5"]) {
+    if (proxy[key]) {
+      const p = proxy[key];
+      parts.push(`${key.toUpperCase()}: ${p.host}:${p.port}`);
+    }
+  }
+  return parts.join(" | ");
+}
+
+function collectProxy(prefix) {
+  const host = document.getElementById(`${prefix}_host`).value.trim();
+  const port = parseInt(document.getElementById(`${prefix}_port`).value, 10);
+  const username = document.getElementById(`${prefix}_username`).value.trim();
+  const password = document.getElementById(`${prefix}_password`).value.trim();
+  if (!host && !port) return null;
+  if (!host || Number.isNaN(port)) return null;
+  return {
+    host,
+    port,
+    username: username || undefined,
+    password: password || undefined,
+  };
+}
+
+function buildPayload() {
+  const proxy = {};
+  const http = collectProxy("http");
+  const https = collectProxy("https");
+  const socks = collectProxy("socks");
+  if (http) proxy.http = http;
+  if (https) proxy.https = https;
+  if (socks) proxy.socks5 = socks;
+  return {
+    name: document.getElementById("name").value.trim(),
+    default_url: document.getElementById("default_url").value.trim(),
+    autostart: document.getElementById("autostart").checked,
+    notes: document.getElementById("notes").value.trim(),
+    proxy: Object.keys(proxy).length ? proxy : {},
+  };
+}
+
+async function fetchJSON(url, options = {}) {
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...options });
+  const data = await res.json();
+  if (!res.ok || data.code !== 0) {
+    throw new Error(data.message || `请求失败 ${res.status}`);
+  }
+  return data.data;
+}
+
+function fillForm(acc) {
+  editingId = acc.id;
+  document.getElementById("account-id").value = acc.id;
+  document.getElementById("name").value = acc.name || "";
+  document.getElementById("default_url").value = acc.default_url || "";
+  document.getElementById("autostart").checked = !!acc.autostart;
+  document.getElementById("notes").value = acc.notes || "";
+  for (const prefix of ["http", "https", "socks"]) {
+    document.getElementById(`${prefix}_host`).value = "";
+    document.getElementById(`${prefix}_port`).value = "";
+    document.getElementById(`${prefix}_username`).value = "";
+    document.getElementById(`${prefix}_password`).value = "";
+  }
+  if (acc.proxy) {
+    if (acc.proxy.http) {
+      document.getElementById("http_host").value = acc.proxy.http.host || "";
+      document.getElementById("http_port").value = acc.proxy.http.port || "";
+      document.getElementById("http_username").value = acc.proxy.http.username || "";
+      document.getElementById("http_password").value = acc.proxy.http.password || "";
+    }
+    if (acc.proxy.https) {
+      document.getElementById("https_host").value = acc.proxy.https.host || "";
+      document.getElementById("https_port").value = acc.proxy.https.port || "";
+      document.getElementById("https_username").value = acc.proxy.https.username || "";
+      document.getElementById("https_password").value = acc.proxy.https.password || "";
+    }
+    if (acc.proxy.socks5) {
+      document.getElementById("socks_host").value = acc.proxy.socks5.host || "";
+      document.getElementById("socks_port").value = acc.proxy.socks5.port || "";
+      document.getElementById("socks_username").value = acc.proxy.socks5.username || "";
+      document.getElementById("socks_password").value = acc.proxy.socks5.password || "";
+    }
+  }
+  document.getElementById("submit-btn").innerText = "更新账号";
+}
+
+function resetForm() {
+  editingId = null;
+  document.getElementById("account-form").reset();
+  document.getElementById("account-id").value = "";
+  document.getElementById("submit-btn").innerText = "保存账号";
+  document.getElementById("form-status").innerText = "";
+}
+
+async function loadAccounts() {
+  const status = document.getElementById("load-status");
+  status.innerText = "加载中...";
+  try {
+    const data = await fetchJSON("/api/accounts");
+    const tbody = document.querySelector("#accounts-table tbody");
+    tbody.innerHTML = "";
+    (data.accounts || []).forEach(acc => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="small">${acc.id}</td>
+        <td>${acc.name}</td>
+        <td class="small">${proxySummary(acc.proxy)}</td>
+        <td class="small">${acc.default_url || ""}</td>
+        <td>${acc.autostart ? "是" : "否"}</td>
+        <td>${acc.running ? "运行中" : "未运行"}</td>
+        <td class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-sm btn-success">启动</button>
+          <button class="btn btn-sm btn-warning">停止</button>
+          <button class="btn btn-sm btn-outline-primary">编辑</button>
+          <button class="btn btn-sm btn-outline-danger">删除</button>
+        </td>
+      `;
+      const [startBtn, stopBtn, editBtn, delBtn] = tr.querySelectorAll("button");
+      startBtn.onclick = () => startAccount(acc.id);
+      stopBtn.onclick = () => stopAccount(acc.id);
+      editBtn.onclick = () => fillForm(acc);
+      delBtn.onclick = () => deleteAccount(acc.id);
+      tbody.appendChild(tr);
+    });
+    status.innerText = "";
+  } catch (err) {
+    status.innerText = err.message;
+  }
+}
+
+async function submitForm(event) {
+  event.preventDefault();
+  const payload = buildPayload();
+  const status = document.getElementById("form-status");
+  status.innerText = "";
+  try {
+    if (editingId) {
+      await fetchJSON(`/api/accounts/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
+    } else {
+      await fetchJSON("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
+    }
+    resetForm();
+    await loadAccounts();
+  } catch (err) {
+    status.innerText = err.message;
+  }
+}
+
+async function startAccount(id) {
+  await fetchJSON(`/api/accounts/${id}/start`, { method: "POST" });
+  loadAccounts();
+}
+
+async function stopAccount(id) {
+  await fetchJSON(`/api/accounts/${id}/stop`, { method: "POST" });
+  loadAccounts();
+}
+
+async function deleteAccount(id) {
+  if (!confirm("确认删除账号并保留 profile 目录？选择取消可保留。")) {
+    return;
+  }
+  await fetchJSON(`/api/accounts/${id}?delete_profile=false`, { method: "DELETE" });
+  loadAccounts();
+}
+
+document.getElementById("account-form").addEventListener("submit", submitForm);
+document.getElementById("reset-btn").addEventListener("click", resetForm);
+document.getElementById("refresh-btn").addEventListener("click", loadAccounts);
+
+loadAccounts();
+</script>
+</body>
+</html>
