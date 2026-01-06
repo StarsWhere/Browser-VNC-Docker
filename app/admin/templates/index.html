@@ -87,7 +87,10 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
       <span>账号列表</span>
-      <button class="btn btn-sm btn-outline-primary" id="refresh-btn">刷新</button>
+      <div class="d-flex align-items-center gap-2">
+        <small class="text-muted" id="accounts-refresh-status"></small>
+        <button class="btn btn-sm btn-outline-primary" id="refresh-btn">刷新列表</button>
+      </div>
     </div>
     <div class="card-body table-responsive">
       <table class="table table-sm align-middle" id="accounts-table">
@@ -107,10 +110,29 @@
       <div id="load-status" class="text-muted small"></div>
     </div>
   </div>
+
+  <div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>桌面剪切板</span>
+      <small class="text-muted" id="clipboard-status"></small>
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label">当前内容</label>
+        <textarea class="form-control" id="clipboard-content" rows="4" placeholder="剪切板内容将在此显示"></textarea>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-secondary" type="button" id="clipboard-refresh-btn">读取剪切板</button>
+        <button class="btn btn-outline-primary" type="button" id="clipboard-save-btn">写入剪切板</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 let editingId = null;
+let accountsRefreshing = false;
+const AUTO_REFRESH_MS = 20000;
 
 function proxySummary(proxy) {
   if (!proxy || Object.keys(proxy).length === 0) return "直连";
@@ -209,9 +231,16 @@ function resetForm() {
   document.getElementById("form-status").innerText = "";
 }
 
-async function loadAccounts() {
+function setAccountsStatus(message) {
+  document.getElementById("accounts-refresh-status").innerText = message;
+}
+
+async function loadAccounts(options = {}) {
+  if (accountsRefreshing) return;
+  const { showSpinner = true } = options;
+  accountsRefreshing = true;
   const status = document.getElementById("load-status");
-  status.innerText = "加载中...";
+  if (showSpinner) status.innerText = "加载中...";
   try {
     const data = await fetchJSON("/api/accounts");
     const tbody = document.querySelector("#accounts-table tbody");
@@ -239,9 +268,14 @@ async function loadAccounts() {
       delBtn.onclick = () => deleteAccount(acc.id);
       tbody.appendChild(tr);
     });
+    const now = new Date().toLocaleTimeString();
     status.innerText = "";
+    setAccountsStatus(`已刷新 ${now}`);
   } catch (err) {
     status.innerText = err.message;
+    setAccountsStatus("刷新失败");
+  } finally {
+    accountsRefreshing = false;
   }
 }
 
@@ -281,11 +315,39 @@ async function deleteAccount(id) {
   loadAccounts();
 }
 
+async function loadClipboard() {
+  const status = document.getElementById("clipboard-status");
+  status.innerText = "读取中...";
+  try {
+    const data = await fetchJSON("/api/clipboard");
+    document.getElementById("clipboard-content").value = data.content || "";
+    status.innerText = `已读取 ${new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    status.innerText = err.message;
+  }
+}
+
+async function saveClipboard() {
+  const status = document.getElementById("clipboard-status");
+  status.innerText = "写入中...";
+  const content = document.getElementById("clipboard-content").value;
+  try {
+    await fetchJSON("/api/clipboard", { method: "POST", body: JSON.stringify({ content }) });
+    status.innerText = `写入成功 ${new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    status.innerText = err.message;
+  }
+}
+
 document.getElementById("account-form").addEventListener("submit", submitForm);
 document.getElementById("reset-btn").addEventListener("click", resetForm);
 document.getElementById("refresh-btn").addEventListener("click", loadAccounts);
+document.getElementById("clipboard-refresh-btn").addEventListener("click", loadClipboard);
+document.getElementById("clipboard-save-btn").addEventListener("click", saveClipboard);
 
 loadAccounts();
+setInterval(() => loadAccounts({ showSpinner: false }), AUTO_REFRESH_MS);
+loadClipboard();
 </script>
 </body>
 </html>

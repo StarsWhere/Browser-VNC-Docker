@@ -16,6 +16,36 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 START_TIME = time.time()
 
 
+def _clipboard_env():
+    env = os.environ.copy()
+    env["DISPLAY"] = accounts.DISPLAY
+    return env
+
+
+def read_clipboard() -> str:
+    result = subprocess.run(
+        ["xclip", "-selection", "clipboard", "-o"],
+        capture_output=True,
+        text=True,
+        env=_clipboard_env(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "xclip read failed")
+    return result.stdout
+
+
+def write_clipboard(content: str) -> None:
+    result = subprocess.run(
+        ["xclip", "-selection", "clipboard", "-i"],
+        input=content,
+        text=True,
+        capture_output=True,
+        env=_clipboard_env(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "xclip write failed")
+
+
 def configure_logging():
     log_dir = accounts.LOG_DIR
     os.makedirs(log_dir, exist_ok=True)
@@ -89,6 +119,30 @@ def health():
             "processes": processes,
         }
     )
+
+
+@app.route("/api/clipboard", methods=["GET"])
+def get_clipboard():
+    try:
+        content = read_clipboard()
+    except Exception as exc:
+        app.logger.exception("failed to read clipboard")
+        return api_response(code=1010, message="failed to read clipboard", data={"reason": str(exc)}, http_status=500)
+    return api_response(data={"content": content})
+
+
+@app.route("/api/clipboard", methods=["POST"])
+def set_clipboard():
+    payload = request.get_json(silent=True) or {}
+    content = payload.get("content", "")
+    if not isinstance(content, str):
+        return api_response(code=1001, message="content must be string", data=None, http_status=400)
+    try:
+        write_clipboard(content)
+    except Exception as exc:
+        app.logger.exception("failed to write clipboard")
+        return api_response(code=1011, message="failed to write clipboard", data={"reason": str(exc)}, http_status=500)
+    return api_response(data={"content": content})
 
 
 @app.route("/api/accounts", methods=["GET"])
