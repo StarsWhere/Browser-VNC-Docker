@@ -23,27 +23,38 @@ def _clipboard_env():
 
 
 def read_clipboard() -> str:
-    result = subprocess.run(
-        ["xclip", "-selection", "clipboard", "-o"],
-        capture_output=True,
-        text=True,
-        env=_clipboard_env(),
-    )
+    try:
+        result = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o"],
+            capture_output=True,
+            text=True,
+            env=_clipboard_env(),
+            timeout=3,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("clipboard read timed out")
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "xclip read failed")
+        stderr = (result.stderr or "").strip()
+        if "target STRING not available" in stderr:
+            return ""
+        raise RuntimeError(stderr or "xclip read failed")
     return result.stdout
 
 
 def write_clipboard(content: str) -> None:
-    result = subprocess.run(
-        ["xclip", "-selection", "clipboard", "-i"],
-        input=content,
-        text=True,
-        capture_output=True,
-        env=_clipboard_env(),
-    )
+    try:
+        result = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-i"],
+            input=content,
+            text=True,
+            capture_output=True,
+            env=_clipboard_env(),
+            timeout=3,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("clipboard write timed out")
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "xclip write failed")
+        raise RuntimeError((result.stderr or "").strip() or "xclip write failed")
 
 
 def configure_logging():
