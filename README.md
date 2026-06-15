@@ -1,5 +1,31 @@
 # Browser-VNC-Docker
 
+<!-- starswhere-docs-overview -->
+
+## 项目概览
+
+**定位**：一个基于 Docker 的浏览器/VNC 运行环境，提供账号管理、自动启动脚本和管理端服务。
+
+**核心功能**：
+- 容器化浏览器/VNC 运行环境
+- 账号启动与自动启动脚本
+- 管理后台 WSGI 应用
+- Docker Compose 与环境变量模板
+
+**技术栈**：Python、Flask/WSGI 风格服务、Docker、Docker Compose；Python 环境建议使用 uv。
+
+**目录与模块**：`app/admin` 是管理后台；`app/scripts` 放置自动启动和账号启动脚本；`app/common` 管理账号数据；根目录 Docker 文件负责镜像和编排。
+
+**使用方式**：按 `.env.example` 准备配置后使用 Docker Compose 部署；本地 Python 辅助脚本可用 `uv run` 执行。
+
+**配置说明**：`.env.example`、`docker-compose.yml` 和账号配置共同决定运行参数。
+
+**适用场景**：适合在容器中运行浏览器会话、远程访问或多账号自动化环境。
+
+**注意事项**：VNC 与浏览器环境涉及远程访问安全，部署时应设置强认证并限制网络暴露。
+
+<!-- /starswhere-docs-overview -->
+
 浏览器VNC容器管理系统
 
 ## 项目简介
